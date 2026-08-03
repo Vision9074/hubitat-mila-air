@@ -1,0 +1,33 @@
+{
+    "packageName": "Mila Air Integration",
+    "author": "vision9074",
+    "version": "1.0.0",
+    "minimumHEVersion": "2.3.0",
+    "dateReleased": "2026-08-03",
+    "category": "Integrations",
+    "tags": ["Cloud", "Integrations"],
+    "documentationLink": "https://github.com/vision9074/hubitat-mila-air",
+    "licenseFile": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/LICENSE",
+    "releaseNotes": "1.0.0 - Initial release. Parent app handles Mila cloud login, device discovery and polling; child driver exposes air quality, temperature, humidity, CO2, CO, VOC and particulate sensors plus fan control and Mila's smart modes.",
+    "apps": [
+        {
+            "id": "85a5a61d-3c86-4959-8d5a-a7d6a21542c3",
+            "name": "Mila Air Integration",
+            "namespace": "vision9074",
+            "location": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirIntegration.groovy",
+            "required": true,
+            "oauth": false,
+            "description": "Parent app: holds the Mila account credentials and OAuth token, discovers appliances, polls the Mila GraphQL API and issues all commands."
+        }
+    ],
+    "drivers": [
+        {
+            "id": "fb176e4e-a1ad-40bf-9b7e-707ae40fb83b",
+            "name": "Mila Air Purifier",
+            "namespace": "vision9074",
+            "location": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirPurifier.groovy",
+            "required": true,
+            "description": "Child driver: one device per Mila purifier, exposing its sensors, fan control and smart modes."
+        }
+    ]
+}

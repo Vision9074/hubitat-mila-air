@@ -6,6 +6,8 @@ A parent app + child driver pair that brings Mila air purifiers into Hubitat.
 |---|---|---|
 | [MilaAirIntegration.groovy](MilaAirIntegration.groovy) | App | Login, device discovery/selection, polling, all API calls |
 | [MilaAirPurifier.groovy](MilaAirPurifier.groovy) | Driver | One child device per Mila unit |
+| [packageManifest.json](packageManifest.json) | HPM | Package manifest — what Hubitat Package Manager installs |
+| [repository.json](repository.json) | HPM | Repository listing, so the package is browsable in HPM |
 
 Namespace for both files is `vision9074`. If you change it, change it in *both*
 (`definition(namespace:)` in each, plus `DRIVER_NAMESPACE` in the app).
@@ -52,6 +54,23 @@ one login and an N-requests-per-sensor poll loop per purifier.
 
 ## Install
 
+### Option A — Hubitat Package Manager (recommended)
+
+HPM installs both files in the right order and handles updates afterwards.
+In the HPM app, either:
+
+* **Install → From a URL**, and paste the package manifest:
+  `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/packageManifest.json`
+* or **Package Manager Settings → Add a Custom Repository**, paste:
+  `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/repository.json`
+  then **Install → From a Repository → Integrations → Mila Air Integration**.
+  Adding the repository is the better option if you want this package to show
+  up in HPM's browse and search lists.
+
+Then continue from step 3 below.
+
+### Option B — manual import
+
 Both files carry an `importUrl`, so you can use **Import** and paste the raw URL
 instead of the code. Install the **driver first** — the app needs it to exist
 before it can create devices.
@@ -62,6 +81,9 @@ before it can create devices.
 2. **Apps code → Add app → Import**, paste:
    `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirIntegration.groovy`
    then Save.
+
+### Either way
+
 3. **Apps → Add user app → Mila Air Integration**.
 4. Open **Mila account**, enter your Mila email and password, press **Connect
    to Mila**. You should see "Connected successfully".
