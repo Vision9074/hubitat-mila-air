@@ -1,0 +1,5 @@
+# Claude Code session settings (local permission grants, not project config)
+.claude/
+
+# Personal scratch notes
+Hubitat Documentation.txt
