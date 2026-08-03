@@ -29,7 +29,8 @@ import groovy.json.JsonOutput
 import groovy.transform.Field
 
 metadata {
-    definition(name: "Mila Air Purifier", namespace: "vision9074", author: "vision9074") {
+    definition(name: "Mila Air Purifier", namespace: "vision9074", author: "vision9074",
+               importUrl: "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirPurifier.groovy") {
         capability "Actuator"
         capability "Sensor"
         capability "Refresh"

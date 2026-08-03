@@ -52,7 +52,8 @@ definition(
     iconX3Url: "",
     singleThreaded: true,
     installOnOpen: true,
-    documentationLink: "https://github.com/sanghviharshit/ha-mila"
+    documentationLink: "https://github.com/vision9074/hubitat-mila-air",
+    importUrl: "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirIntegration.groovy"
 )
 
 preferences {

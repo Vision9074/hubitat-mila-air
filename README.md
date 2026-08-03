@@ -52,9 +52,16 @@ one login and an N-requests-per-sensor poll loop per purifier.
 
 ## Install
 
-1. **Drivers → Add driver → New driver**, paste `MilaAirPurifier.groovy`, Save.
-2. **Apps code → Add app → New app**, paste `MilaAirIntegration.groovy`, Save.
-   (Driver first — the app needs it to exist before it can create devices.)
+Both files carry an `importUrl`, so you can use **Import** and paste the raw URL
+instead of the code. Install the **driver first** — the app needs it to exist
+before it can create devices.
+
+1. **Drivers → Add driver → Import**, paste:
+   `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirPurifier.groovy`
+   then Save.
+2. **Apps code → Add app → Import**, paste:
+   `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirIntegration.groovy`
+   then Save.
 3. **Apps → Add user app → Mila Air Integration**.
 4. Open **Mila account**, enter your Mila email and password, press **Connect
    to Mila**. You should see "Connected successfully".
