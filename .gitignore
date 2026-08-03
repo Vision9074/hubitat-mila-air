@@ -3,3 +3,8 @@
 
 # Personal scratch notes
 Hubitat Documentation.txt
+
+# Hubitat Package Manager CLI, used to generate the manifests.
+# Downloaded from dcmeglio/hubitat-packagemanagertools; not part of this package.
+hpm.exe
+hpm-*.zip

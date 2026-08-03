@@ -1,14 +1,16 @@
 {
-    "author": "vision9074",
-    "gitHubUrl": "https://github.com/vision9074",
-    "packages": [
-        {
-            "id": "bec9fd1e-8388-456c-bbf5-addcd5fca776",
-            "name": "Mila Air Integration",
-            "category": "Integrations",
-            "location": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/packageManifest.json",
-            "description": "Connect Mila air purifiers to Hubitat via the Mila cloud API. Exposes air quality, temperature, humidity, CO2, CO, VOC and particulate sensors, plus fan control and Mila's smart modes.",
-            "tags": ["Cloud", "Integrations"]
-        }
-    ]
+  "author": "vision9074",
+  "gitHubUrl": "https://github.com/vision9074",
+  "packages": [
+    {
+      "id": "bec9fd1e-8388-456c-bbf5-addcd5fca776",
+      "name": "Mila Air Integration",
+      "category": "Integrations",
+      "location": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/packageManifest.json",
+      "description": "Connect Mila air purifiers to Hubitat via the Mila cloud API. Exposes air quality, temperature, humidity, CO2, CO, VOC and particulate sensors, plus fan control and Mila's smart modes.",
+      "tags": [
+        "Cloud"
+      ]
+    }
+  ]
 }
