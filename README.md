@@ -143,9 +143,12 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
   preference if there has never been one.
 * `setSpeed("auto")` → Automagic.
 * Reported RPM is converted back to a percentage using the *Minimum/Maximum fan
-  RPM* preferences (default 500/2000) and snapped to steps of 10, matching the
-  Mila app's own slider. Adjust those two preferences if your unit's idle RPM
-  makes 0%/100% land in the wrong place.
+  RPM* preferences (default 600/2000) and snapped to steps of 10, matching the
+  Mila app's own slider. Those defaults are the endpoints Mila's schema
+  documents for `fanSpeed` 0 and 100, and they make the set value and the
+  read-back value agree exactly at every step. If your unit idles nearer 500
+  RPM, lower *Minimum fan RPM* — at the cost of the low end of the scale
+  reading about one step high.
 
 ---
 

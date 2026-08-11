@@ -117,7 +117,7 @@ metadata {
         input name: "defaultOnLevel", type: "number", title: "Default level for on() when there is no previous level (%)",
               defaultValue: 50, range: "1..100", required: true
         input name: "minRpm", type: "number", title: "Minimum fan RPM (used to convert reported RPM to %)",
-              defaultValue: 500, range: "100..1500", required: true
+              defaultValue: 600, range: "100..1500", required: true
         input name: "maxRpm", type: "number", title: "Maximum fan RPM (used to convert reported RPM to %)",
               defaultValue: 2000, range: "1000..4000", required: true
         input name: "logEnable", type: "bool", title: "Enable debug logging (auto-off after 30 minutes)", defaultValue: true
@@ -428,7 +428,10 @@ private void parseFanSpeed(BigDecimal rpm, boolean online, String modeName) {
 // =============================================================================
 private Integer rpmToPercent(Integer rpm) {
     if (rpm == null || rpm <= 0) return 0
-    Integer lo = (settings.minRpm ?: 500) as Integer
+    // 600/2000 are the schema's documented endpoints for fanSpeed 0/100, and
+    // they make set-percentage and read-back-percentage agree exactly. Some
+    // units reportedly idle nearer 500, hence the preference.
+    Integer lo = (settings.minRpm ?: 600) as Integer
     Integer hi = (settings.maxRpm ?: 2000) as Integer
     if (hi <= lo) return 0
     BigDecimal pct = ((rpm - lo) / (BigDecimal.valueOf(hi - lo))) * 100.0
