@@ -183,6 +183,21 @@ def mainPage() {
                 }
             }
 
+            section("<b>Filter change reminders</b>") {
+                paragraph "Mila tracks a filter install date but never reminds you to " +
+                          "change it. Each device derives its own due date from that " +
+                          "install date plus the <i>Replace filter after</i> setting in " +
+                          "the device's preferences (Mila recommends 6 months)."
+                input name: "filterNotifyDevices", type: "capability.notification",
+                      title: "Send reminders to", multiple: true, required: false
+                input name: "filterNotifyDaysBefore", type: "number", width: 6,
+                      title: "Warn this many days ahead (0 for only when due)",
+                      defaultValue: 14, range: "0..90"
+                paragraph "<small>Checked once daily at 9am. Each device is announced " +
+                          "once when the warning threshold is crossed and once when it " +
+                          "falls due; replacing the filter re-arms both.</small>"
+            }
+
             section("<b>Options</b>") {
                 input name: "autoRename", type: "bool", width: 6,
                       title: "Rename devices when they are renamed in the Mila app",
@@ -317,6 +332,7 @@ private void initialize() {
     }
     syncChildDevices()
     schedulePolling()
+    schedule("0 0 9 * * ?", "checkFilters")
     runIn(5, "refreshAll")
 }
 
@@ -656,6 +672,60 @@ private void distributeToChild(cd, Map appliance) {
 
 private String applianceFields() {
     return state.useBasicFields ? FIELDS_BASIC : FIELDS_FULL
+}
+
+// =============================================================================
+// Filter change reminders
+// =============================================================================
+/**
+ * Daily sweep over the children's derived filter figures. The driver owns the
+ * arithmetic; this only decides when to speak, and to whom.
+ *
+ * Each reminder is keyed to the due date it refers to, so a given filter is
+ * announced once on approach and once when it falls due. Fitting a new filter
+ * moves the due date, which makes the key different and re-arms both.
+ */
+void checkFilters() {
+    def targets = settings.filterNotifyDevices
+    if (!targets) return
+
+    Integer warnDays = (settings.filterNotifyDaysBefore == null ? 14 : settings.filterNotifyDaysBefore) as Integer
+    Map sent = (state.filterRemindersSent ?: [:]) as Map
+    Map stillPresent = [:]
+
+    getChildDevices().each { cd ->
+        def remaining = cd.currentValue("filterDaysRemaining")
+        String due = cd.currentValue("filterChangeDue")
+        if (remaining == null || !due) return          // no data yet
+
+        Integer days = remaining as Integer
+        String stage = null
+        if (days <= 0)                          stage = "due:${due}"
+        else if (warnDays > 0 && days <= warnDays) stage = "warn:${due}"
+
+        String key = cd.deviceNetworkId
+        if (stage) stillPresent[key] = stage
+        if (!stage || sent[key] == stage) return
+
+        Integer hours = (cd.currentValue("filterHours") ?: 0) as Integer
+        String msg = (days <= 0)
+            ? "${cd.displayName}: Mila filter is due for replacement (${hours} run hours since ${cd.currentValue('filterInstalled') ?: 'install'})."
+            : "${cd.displayName}: Mila filter is due in ${days} day${days == 1 ? '' : 's'} on ${due} (${hours} run hours)."
+
+        targets.each { target ->
+            try {
+                target.deviceNotification(msg)
+            } catch (Exception e) {
+                logWarn "Could not notify ${target.displayName}: ${e.message}"
+            }
+        }
+        sent[key] = stage
+        logInfo msg
+    }
+
+    // Drop entries for devices that were removed or whose filter was replaced,
+    // so this map cannot grow without bound.
+    state.filterRemindersSent = sent.findAll { k, v -> stillPresent[k] == v }
 }
 
 // =============================================================================

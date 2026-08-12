@@ -125,7 +125,11 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 | `mode` | | `Automagic`, `Manual`, `Sleep`, `Quiet`, `Turndown`, `WhiteNoise`, `Housekeeper`, `DeepClean`, `Quarantine`, `Safeguard`, `PowerSaver`, or `offline` |
 | `activeModes` | JSON | every mode currently applied |
 | `connectionStatus` | | `online` / `offline` |
-| `filterStatus`, `filterKind`, `filterDaysLeft`, `filterInstalled` | | |
+| `filterStatus`, `filterKind`, `filterDaysLeft`, `filterInstalled` | | `filterDaysLeft` is Mila's own estimate |
+| `filterHours` | h | fan run hours, derived — see below |
+| `filterDaysInService`, `filterDaysRemaining` | days | |
+| `filterLifeRemaining` | % | |
+| `filterChangeDue` | | date the filter falls due |
 | `rssi` | dBm | Wi-Fi signal |
 | `quietMode`, `sleepMode`, `turndownMode`, `whitenoiseMode`, `housekeeperMode`, `quarantineMode`, `powerSaverMode`, `childLock` | on/off | |
 | `soundsConfig`, `bedtimeStart`, `bedtimeEnd`, `roomName`, `firmware`, `lastUpdate` | | |
@@ -134,7 +138,7 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 `setManualMode`, `setQuietMode`, `setSleepMode`, `setTurndownMode`,
 `setWhitenoiseMode`, `setHousekeeperMode`, `setQuarantineMode`,
 `setPowerSaverMode`, `setChildLock`, `setSoundsConfig`, `setBedtime`,
-`startDeepClean`, `calibrateFilter`, `resetSensor`.
+`startDeepClean`, `calibrateFilter`, `resetFilterTracking`, `resetSensor`.
 
 ### Switch / level semantics
 
@@ -149,6 +153,49 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
   read-back value agree exactly at every step. If your unit idles nearer 500
   RPM, lower *Minimum fan RPM* — at the cost of the low end of the scale
   reading about one step high.
+
+---
+
+## Filter tracking
+
+Mila records when a filter was fitted and computes its own `daysLeft`, but the
+app raises no reminder to actually change it. This fills that gap.
+
+**Run hours.** Every poll, the interval since the previous poll is credited to
+`filterHours` if the fan was turning at the start of it. A transition is
+therefore attributed to the following interval — at most one poll period of
+error per on/off, unbiased in either direction, against a filter life measured
+in months. Gaps longer than two hours (hub restart, outage, polling paused) are
+discarded rather than counted, since there is no evidence about what the fan
+did during them.
+
+**Due date.** Taken from the install date plus the *Replace filter after*
+preference on each device, so purifiers in dirtier rooms can be set shorter.
+The default is 6 months, [Mila's own recommendation][mila-filters]; real life
+runs 6–9 months depending on air quality. Month arithmetic uses a calendar, so
+6 months is 181 days rather than a drifting 180.
+
+**When it says replace.** `filterStatus` flips to `replace` when *either* clock
+runs out: the configured interval, or Mila's own `daysLeft` dropping to 7 or
+under. They measure different things — ours is calendar time from installation,
+Mila's reacts to how dirty the air has actually been — so whichever expires
+first wins. Both are exposed separately so you can see which fired.
+
+**Resetting.** When Mila reports a new install date the counters reset on their
+own. `resetFilterTracking` restarts filter life from today for a filter changed
+without the Mila app recording it; it is local only and sends nothing to Mila.
+
+**Reminders.** The app's *Filter change reminders* section sends to any
+Notification device — once when the warning threshold is crossed (14 days ahead
+by default) and once when it falls due, checked daily at 9am. Fitting a new
+filter re-arms both. Leave the device list empty and nothing is sent; the
+attributes are still there for your own rules.
+
+This all works from `filter.installedAt`, which is in both field sets, so it
+keeps working if the app falls back to the reduced query. Only Mila's
+`daysLeft` cross-check needs the extended one.
+
+[mila-filters]: https://help.milacares.com/filters.html
 
 ---
 
@@ -187,8 +234,9 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 * **Outdoor air quality and pollen** are available from the same API
   (`Location.outdoorStation`, `Location.pollenStation`) but are not exposed —
   they belong to a location, not a purifier, so they would need a second driver.
-* `filterStatus` reports `replace` at ≤ 7 days left; it only populates when the
-  extended field set is in use.
+* Filter run hours are sampled at the poll interval, not measured on the
+  device, so they are an estimate — accurate to about one poll period per
+  on/off transition, and blind to any period the hub was down.
 
 ## Credits
 

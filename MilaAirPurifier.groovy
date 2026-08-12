@@ -27,6 +27,7 @@
 
 import groovy.json.JsonOutput
 import groovy.transform.Field
+import java.util.Calendar
 
 metadata {
     definition(name: "Mila Air Purifier", namespace: "vision9074", author: "vision9074",
@@ -65,8 +66,15 @@ metadata {
         attribute "roomName", "string"
         attribute "firmware", "string"
         attribute "filterKind", "string"
-        attribute "filterDaysLeft", "number"
+        attribute "filterDaysLeft", "number"          // Mila's own estimate
         attribute "filterInstalled", "string"
+        // Derived filter usage. Mila exposes no replacement reminder, so these
+        // are accumulated here from the polled data.
+        attribute "filterHours", "number"             // hours the fan has actually run
+        attribute "filterDaysInService", "number"
+        attribute "filterDaysRemaining", "number"     // against the configured interval
+        attribute "filterLifeRemaining", "number"     // %
+        attribute "filterChangeDue", "string"
         attribute "soundsConfig", "enum", ["Enabled", "DaytimeOnly", "Disabled"]
         attribute "bedtimeStart", "string"
         attribute "bedtimeEnd", "string"
@@ -108,6 +116,7 @@ metadata {
         ]
         command "startDeepClean",  [[name: "Target ACH*", type: "NUMBER", description: "Air changes per hour to reach"]]
         command "calibrateFilter"
+        command "resetFilterTracking"
         command "resetSensor", [[name: "Sensor*", type: "ENUM", constraints: ["Co", "Voc"]]]
     }
 
@@ -120,6 +129,12 @@ metadata {
               defaultValue: 600, range: "100..1500", required: true
         input name: "maxRpm", type: "number", title: "Maximum fan RPM (used to convert reported RPM to %)",
               defaultValue: 2000, range: "1000..4000", required: true
+        input name: "filterLifeMonths", type: "enum", title: "Replace filter after",
+              options: ["3": "3 months", "4": "4 months", "5": "5 months",
+                        "6": "6 months (Mila's recommendation)", "7": "7 months",
+                        "8": "8 months", "9": "9 months", "10": "10 months",
+                        "11": "11 months", "12": "12 months"],
+              defaultValue: "6", required: true
         input name: "logEnable", type: "bool", title: "Enable debug logging (auto-off after 30 minutes)", defaultValue: true
         input name: "txtEnable", type: "bool", title: "Enable descriptive text logging", defaultValue: true
     }
@@ -130,6 +145,13 @@ metadata {
 // =============================================================================
 @Field static final List<String> FAN_SPEEDS =
     ["off", "low", "medium-low", "medium", "medium-high", "high", "on", "auto"]
+
+/**
+ * Longest gap between polls that still counts toward filter run hours. Beyond
+ * this the hub was almost certainly down or polling was paused, and we have no
+ * evidence about the fan, so the interval is discarded.
+ */
+@Field static final long MAX_SAMPLE_GAP_MS = 2 * 60 * 60 * 1000L
 
 /** Named FanControl speeds mapped to the percentage Mila expects. */
 @Field static final Map<String, Integer> SPEED_TO_PERCENT =
@@ -293,6 +315,23 @@ void calibrateFilter() {
     parent?.calibrateFilter(device)
 }
 
+/**
+ * Restarts filter life from now. For a filter changed without the Mila app
+ * recording it -- otherwise the install date Mila reports does that
+ * automatically. Local only; it sends nothing to Mila.
+ */
+void resetFilterTracking() {
+    logInfo "${device.displayName}: filter usage reset; life restarts from today"
+    state.filterAnchorMs = now()
+    state.filterRunSeconds = 0L
+    state.remove("lastRuntimeSampleAt")
+    state.remove("lastSampleRunning")
+    sendEvent(name: "filterHours", value: 0, unit: "h")
+    sendEvent(name: "filterDaysInService", value: 0, unit: "days")
+    sendEvent(name: "filterStatus", value: "normal")
+    refresh()
+}
+
 void resetSensor(String sensor) {
     if (!(sensor in ["Co", "Voc"])) {
         logWarn "Only the Co and Voc sensors can be reset"
@@ -332,11 +371,13 @@ void parseApplianceData(Map appliance) {
     }
 
     parseRoom(appliance.room as Map)
-    parseFilter(appliance.filter as Map)
     parseSmartModes(appliance.smartModes as Map)
     // modeName is passed down rather than read back with currentValue(): an
     // attribute read immediately after its own sendEvent can still be stale.
     parseSensors(appliance.sensors as List, online, modeName)
+    // Runs last: filter tracking integrates fan runtime, so it needs the fan
+    // speed from this same sample.
+    parseFilter(appliance.filter as Map, sensorValue(appliance.sensors as List, "FanSpeed"), online)
 
     updateAttr("targetAqi", targetAqiSetting())
     sendEvent(name: "lastUpdate", value: new Date().format("yyyy-MM-dd HH:mm:ss", location.timeZone))
@@ -352,18 +393,115 @@ private void parseRoom(Map room) {
     }
 }
 
-private void parseFilter(Map filter) {
+/**
+ * Mila tracks a filter install date and its own `daysLeft` estimate, but the
+ * app raises no replacement reminder. This builds one from the polled data:
+ * run hours are integrated across polls, and the due date comes from the
+ * install date plus the configured interval.
+ */
+private void parseFilter(Map filter, BigDecimal fanRpm, boolean online) {
     if (!filter) return
     if (filter.kind) updateAttr("filterKind", splitCamelCase(filter.kind.toString()))
-    if (filter.installedAt != null) {
-        updateAttr("filterInstalled", epochToDate(filter.installedAt))
+
+    Long installedMs = epochToMillis(filter.installedAt)
+    if (installedMs != null) {
+        updateAttr("filterInstalled", formatDate(installedMs))
+        anchorFilterTracking(installedMs)
     }
+
+    // Mila's own estimate. Absent from the reduced field set, so everything
+    // below has to work without it.
+    Integer milaDaysLeft = null
     if (filter.daysLeft != null) {
-        Integer days = toNumber(filter.daysLeft) as Integer
-        updateAttr("filterDaysLeft", days)
-        // FilterStatus is a two-state capability; treat the last week as "replace".
-        updateAttr("filterStatus", days <= 7 ? "replace" : "normal")
+        milaDaysLeft = toNumber(filter.daysLeft) as Integer
+        updateAttr("filterDaysLeft", milaDaysLeft, "days")
     }
+
+    accumulateRuntime(fanRpm, online)
+    updateAttr("filterHours", filterRunHours(), "h")
+
+    Long anchorMs = state.filterAnchorMs as Long
+    if (anchorMs == null) return
+
+    Long dueMs = addMonths(anchorMs, filterLifeMonthsSetting())
+    Integer daysRemaining = daysBetween(now(), dueMs)
+    updateAttr("filterChangeDue", formatDate(dueMs))
+    updateAttr("filterDaysInService", Math.max(0, daysBetween(anchorMs, now())), "days")
+    updateAttr("filterDaysRemaining", daysRemaining, "days")
+    updateAttr("filterLifeRemaining", lifeRemainingPercent(anchorMs, dueMs), "%")
+    updateAttr("filterStatus", filterStatusFor(daysRemaining, milaDaysLeft))
+}
+
+/**
+ * Establishes the point filter life is measured from, and resets the run-hour
+ * counter when Mila reports a filter change. A manual reset wins over an older
+ * install date, for a filter swapped without the Mila app noticing.
+ */
+private void anchorFilterTracking(Long installedMs) {
+    String seen = installedMs.toString()
+    if (state.milaInstalledAt == seen) return
+
+    boolean firstRun = (state.milaInstalledAt == null)
+    state.milaInstalledAt = seen
+    Long anchor = state.filterAnchorMs as Long
+    if (anchor == null || installedMs > anchor) {
+        state.filterAnchorMs = installedMs
+        state.filterRunSeconds = 0L
+        state.remove("lastRuntimeSampleAt")
+        state.remove("lastSampleRunning")
+        if (!firstRun) logInfo "${device.displayName}: new filter detected (installed ${formatDate(installedMs)}), usage counters reset"
+    }
+}
+
+/**
+ * Adds the interval that just elapsed to the run-hour total, using the fan
+ * state recorded at the START of that interval.
+ */
+private void accumulateRuntime(BigDecimal rpm, boolean online) {
+    Long nowMs = now()
+    Long lastMs = state.lastRuntimeSampleAt as Long
+
+    if (lastMs != null && state.lastSampleRunning) {
+        Long deltaMs = nowMs - lastMs
+        if (deltaMs > 0 && deltaMs <= MAX_SAMPLE_GAP_MS) {
+            state.filterRunSeconds = ((state.filterRunSeconds ?: 0L) as Long) + Math.round(deltaMs / 1000.0d)
+        } else if (deltaMs > MAX_SAMPLE_GAP_MS) {
+            // Hub restart, outage, or paused polling. We have no evidence the
+            // fan ran through the gap, so count nothing rather than invent it.
+            logDebug "Ignoring ${Math.round(deltaMs / 60000.0d)} min gap in runtime tracking"
+        }
+    }
+    state.lastRuntimeSampleAt = nowMs
+    state.lastSampleRunning = (online && rpm != null && rpm > 0)
+}
+
+/** Whole hours: at 0.1h resolution this would fire events on nearly every poll. */
+private Integer filterRunHours() {
+    Long secs = (state.filterRunSeconds ?: 0L) as Long
+    return (Integer) Math.floor(secs / 3600.0d)
+}
+
+/**
+ * "replace" when either clock runs out. They can disagree: ours counts
+ * calendar time from the install date, Mila's reacts to how dirty the air
+ * has actually been, so whichever expires first wins.
+ */
+private String filterStatusFor(Integer daysRemaining, Integer milaDaysLeft) {
+    if (daysRemaining != null && daysRemaining <= 0) return "replace"
+    if (milaDaysLeft != null && milaDaysLeft <= 7) return "replace"
+    return "normal"
+}
+
+private Integer lifeRemainingPercent(Long fromMs, Long dueMs) {
+    Long total = dueMs - fromMs
+    if (total <= 0) return 0
+    BigDecimal pct = ((dueMs - now()) / BigDecimal.valueOf(total)) * 100.0
+    return Math.max(0, Math.min(100, pct.setScale(0, java.math.RoundingMode.HALF_UP).intValue()))
+}
+
+private Integer filterLifeMonthsSetting() {
+    Integer months = (settings.filterLifeMonths ?: "6") as Integer
+    return Math.max(1, Math.min(24, months))
 }
 
 private void parseSmartModes(Map modes) {
@@ -500,9 +638,32 @@ private String boolToOnOff(value) {
     return value == null ? null : (value ? "on" : "off")
 }
 
-private String epochToDate(value) {
+private Long epochToMillis(value) {
     Long secs = toBigDecimal(value)?.longValue()
-    return secs == null ? null : new Date(secs * 1000L).format("yyyy-MM-dd", location.timeZone)
+    return secs == null ? null : (secs * 1000L)
+}
+
+private String formatDate(Long ms) {
+    return ms == null ? null : new Date(ms).format("yyyy-MM-dd", location.timeZone)
+}
+
+private Long addMonths(Long fromMs, Integer months) {
+    Calendar cal = Calendar.getInstance(location.timeZone)
+    cal.setTimeInMillis(fromMs)
+    // Calendar handles month lengths and DST; a fixed 30-day month would drift
+    // by nearly a week over a 6-month interval.
+    cal.add(Calendar.MONTH, months)
+    return cal.getTimeInMillis()
+}
+
+/** Whole days from one instant to another; negative once `toMs` is in the past. */
+private Integer daysBetween(Long fromMs, Long toMs) {
+    return (Integer) Math.floor((toMs - fromMs) / 86400000.0d)
+}
+
+private BigDecimal sensorValue(List sensors, String kind) {
+    def match = sensors?.find { it?.kind?.toString() == kind }
+    return toBigDecimal(match?.latest?.value)
 }
 
 private String padTime(String t) {
