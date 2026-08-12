@@ -1,11 +1,11 @@
 {
   "packageName": "Mila Air Integration",
   "author": "vision9074",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimumHEVersion": "2.3.0",
   "licenseFile": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/LICENSE",
   "documentationLink": "https://github.com/vision9074/hubitat-mila-air",
-  "dateReleased": "2026-08-03",
+  "dateReleased": "2026-08-12",
   "apps": [
     {
       "id": "85a5a61d-3c86-4959-8d5a-a7d6a21542c3",
@@ -26,5 +26,5 @@
       "required": true
     }
   ],
-  "releaseNotes": "1.0.0 - Initial release. Parent app handles Mila cloud login, device discovery and polling; child driver exposes air quality, temperature, humidity, CO2, CO, VOC and particulate sensors plus fan control and Mila's smart modes."
+  "releaseNotes": "1.1.0 - Adds filter tracking: run hours, days remaining and a replacement due date, with a replacement interval you choose per device (default 6 months). Optional reminders can be sent to any notification device. Fixes fan speed reading about one step high at low speeds.\n\n1.0.0 - Initial release. App handles Mila account login, device discovery and polling. Driver provides air quality, temperature, humidity, CO2, CO, VOC and particulate sensors, plus fan control and Mila's smart modes."
 }
