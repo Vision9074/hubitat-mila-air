@@ -1,54 +1,36 @@
-# Mila Air Integration for Hubitat (Unofficial)
+# Mila Air Integration for Hubitat
 
-A parent app + child driver pair that brings Mila air purifiers into Hubitat.
+Bring your [Mila](https://milacares.com) air purifiers into Hubitat: full air
+quality sensing, fan control, Mila's smart modes, and filter replacement
+reminders that the Mila app itself doesn't offer.
 
-| File | Type | Purpose |
-|---|---|---|
-| [MilaAirIntegration.groovy](MilaAirIntegration.groovy) | App | Login, device discovery/selection, polling, all API calls |
-| [MilaAirPurifier.groovy](MilaAirPurifier.groovy) | Driver | One child device per Mila unit |
-| [packageManifest.json](packageManifest.json) | HPM | Package manifest — what Hubitat Package Manager installs |
-| [repository.json](repository.json) | HPM | Repository listing, so the package is browsable in HPM |
-
-Namespace for both files is `vision9074`. If you change it, change it in *both*
-(`definition(namespace:)` in each, plus `DRIVER_NAMESPACE` in the app).
+> **Unofficial.** This is not made or supported by Mila. It uses the same
+> private cloud API as the Mila mobile app, which Mila can change or withdraw at
+> any time without notice.
 
 ---
 
-## API notes
+## What you get
 
-Four things about Mila's API shape the design here, and each of them is easy to
-get wrong — older write-ups about this API are misleading on the first two.
+For each Mila unit on your account, one Hubitat device exposing:
 
-1. **It is GraphQL, at `https://graph-api.milacares.com/graphql`.** Circulating
-   reverse-engineering notes from 2022 describe REST endpoints under
-   `https://api.milacares.com/mms` (`/appliances/meta`, `/sensor/appliance`,
-   `/appliance/{code}/command/...`). Those are legacy. The current app and both
-   maintained reference implementations use GraphQL. Verified against
-   `milasdk/const.py` and the `mila_schema.gql` shipped with `milasdk 2026.1.3`.
+* **Air quality** — AQI, PM1, PM2.5, PM10, VOC, CO, CO₂
+* **Environment** — temperature, humidity, air changes per hour, time to clean
+* **Fan control** — on/off, 0–100% speed, named speeds, and Automagic (auto) mode
+* **Smart modes** — Quiet, Sleep, Turndown, White Noise, Housekeeper,
+  Quarantine, Power Saver, Child Lock
+* **Filter tracking** — run hours, days remaining, replacement due date, and
+  optional reminders to your phone
+* **Diagnostics** — Wi-Fi signal, firmware version, online/offline status
 
-2. **Fan speed is set as a percentage, but reported as RPM.** The mutation is
-   `applyRoomManualMode(roomId, fanSpeed: Int, targetAqi: Int!)`, and the schema
-   documents `fanSpeed` as **0–100**, with `null` meaning "turn the fan off".
-   RPM (roughly 600–2000) only ever appears in the opposite direction, via the
-   `FanSpeed` sensor reading. Sending RPM where a percentage is expected is the
-   easy mistake.
+Everything is a standard Hubitat attribute, so it all works in Rule Machine,
+dashboards, and any other app.
 
-3. **Speed and Automagic are room properties; smart modes are appliance
-   properties.** `applyRoomManualMode` and `applyRoomAutomagicMode` take a
-   `roomId`. Quiet, sleep, turndown, whitenoise, housekeeper, quarantine, power
-   saver and child lock take a `MacAddress` appliance id. The app tracks both
-   ids per device and refreshes the room mapping on every poll, since rooms can
-   be reassigned in the Mila app.
+## Requirements
 
-4. **Auth is a Keycloak direct access grant.** `grant_type=password` against
-   realm `prod`, client `prod-ui`, scope `email profile` — the same thing
-   `milasdk` does via oauthlib's `LegacyApplicationClient`. No browser redirect
-   is involved, which is what makes this workable on Hubitat at all.
-
-The consequence for structure: because one GraphQL query returns every sensor
-for every appliance, credentials, tokens and polling all belong in the app
-rather than being duplicated per device. A driver-only integration would mean
-one login and an N-requests-per-sensor poll loop per purifier.
+* Hubitat hub on firmware **2.3.0** or later
+* A Mila account with at least one purifier already set up in the Mila app
+* Your Mila email and password (used only to log in to Mila's own server)
 
 ---
 
@@ -59,21 +41,18 @@ one login and an N-requests-per-sensor poll loop per purifier.
 HPM installs both files in the right order and handles updates afterwards.
 In the HPM app, either:
 
-* **Install → From a URL**, and paste the package manifest:
+* **Install → From a URL**, and paste:
   `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/packageManifest.json`
 * or **Package Manager Settings → Add a Custom Repository**, paste:
   `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/repository.json`
   then **Install → From a Repository → Integrations → Mila Air Integration**.
-  Adding the repository is the better option if you want this package to show
-  up in HPM's browse and search lists.
-
-Then continue from step 3 below.
+  Adding the repository is the better option if you want this package to appear
+  in HPM's browse and search lists.
 
 ### Option B — manual import
 
-Both files carry an `importUrl`, so you can use **Import** and paste the raw URL
-instead of the code. Install the **driver first** — the app needs it to exist
-before it can create devices.
+Install the **driver first** — the app needs it to exist before it can create
+devices.
 
 1. **Drivers → Add driver → Import**, paste:
    `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirPurifier.groovy`
@@ -82,51 +61,75 @@ before it can create devices.
    `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/MilaAirIntegration.groovy`
    then Save.
 
-### Either way
+### Set it up
 
 3. **Apps → Add user app → Mila Air Integration**.
-4. Open **Mila account**, enter your Mila email and password, press **Connect
-   to Mila**. You should see "Connected successfully".
-5. Open **Add / remove Mila devices**, tick the units you want, press
+4. Open **Mila account**, enter your Mila email and password, and press
+   **Connect to Mila**. You should see "Connected successfully".
+5. Open **Add / remove Mila devices**, tick the units you want, and press
    **Create / Remove Devices**.
-6. Back on the main page, set the poll interval and press **Done**.
-
-### If login fails
-
-* `invalid_grant` — the email or password is wrong.
-* `unauthorized_client` — Mila has disabled direct password login for the
-  `prod-ui` client. Nothing in this integration can work around that; it would
-  need the full PKCE browser flow, which Hubitat cannot complete (the redirect
-  target is `milacares://`, not HTTP).
+6. Back on the main page, set your poll interval and press **Done**.
 
 ---
 
-## What the driver exposes
+## Filter reminders
+
+Mila records when each filter was fitted, but its app never tells you when to
+change one. This integration works out a due date and can remind you.
+
+Set **Replace filter after** in each device's preferences — it's per device, so
+a purifier in a dustier room can be set shorter. The default is 6 months, which
+is [Mila's own recommendation][mila-filters]; in practice filters last 6–9
+months depending on your air.
+
+To get notified, open the app's **Filter change reminders** section and pick any
+Hubitat notification device. You'll get one reminder when the filter is
+approaching its due date (14 days ahead by default) and one when it falls due.
+Fitting a new filter re-arms both automatically. Leave the list empty and
+nothing is sent — the attributes are still there for your own rules.
+
+A filter is flagged for replacement when *either* your chosen interval runs out
+*or* Mila's own estimate drops to a week left. The two measure different things:
+yours is calendar time since installation, Mila's responds to how dirty your air
+has actually been. Both are shown separately so you can see which one fired.
+
+`filterHours` counts how long the fan has actually been running. It's estimated
+from polling rather than read from the device, so treat it as approximate — and
+it can't see any period your hub was offline.
+
+[mila-filters]: https://help.milacares.com/filters.html
+
+---
+
+## Device reference
 
 **Capabilities:** Actuator, Sensor, Refresh, Switch, SwitchLevel, FanControl,
 AirQuality, TemperatureMeasurement, RelativeHumidityMeasurement,
 CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 
-**Attributes**
+### Attributes
 
 | Attribute | Unit | Notes |
 |---|---|---|
-| `airQualityIndex` | 0–500 | AirQuality capability |
+| `airQualityIndex` | 0–500 | |
 | `pm1`, `pm25`, `pm10` | µg/m³ | |
 | `voc` | ppb | multiply by 3.767 for µg/m³ |
 | `carbonMonoxide` | ppm | numeric, not the detector enum |
 | `carbonDioxide` | ppm | |
-| `temperature` | °C/°F | converted to the hub's scale |
+| `temperature` | °C/°F | converted to your hub's scale |
 | `humidity` | % | |
 | `airChangesPerHour` | cph | |
 | `timeToClean` | min | |
 | `level`, `speed`, `switch` | | standard fan/dimmer attributes |
 | `fanSpeedRpm` | rpm | as reported by Mila |
+| `targetAqi` | 0–500 | air quality Mila aims for in manual mode |
 | `mode` | | `Automagic`, `Manual`, `Sleep`, `Quiet`, `Turndown`, `WhiteNoise`, `Housekeeper`, `DeepClean`, `Quarantine`, `Safeguard`, `PowerSaver`, or `offline` |
 | `activeModes` | JSON | every mode currently applied |
 | `connectionStatus` | | `online` / `offline` |
-| `filterStatus`, `filterKind`, `filterDaysLeft`, `filterInstalled` | | `filterDaysLeft` is Mila's own estimate |
-| `filterHours` | h | fan run hours, derived — see below |
+| `filterStatus` | | `normal` / `replace` |
+| `filterKind`, `filterInstalled` | | filter type and install date |
+| `filterDaysLeft` | days | Mila's own estimate |
+| `filterHours` | h | fan run hours since the filter was fitted |
 | `filterDaysInService`, `filterDaysRemaining` | days | |
 | `filterLifeRemaining` | % | |
 | `filterChangeDue` | | date the filter falls due |
@@ -134,112 +137,98 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 | `quietMode`, `sleepMode`, `turndownMode`, `whitenoiseMode`, `housekeeperMode`, `quarantineMode`, `powerSaverMode`, `childLock` | on/off | |
 | `soundsConfig`, `bedtimeStart`, `bedtimeEnd`, `roomName`, `firmware`, `lastUpdate` | | |
 
-**Commands beyond the standard capabilities:** `setAutomagicMode`,
-`setManualMode`, `setQuietMode`, `setSleepMode`, `setTurndownMode`,
-`setWhitenoiseMode`, `setHousekeeperMode`, `setQuarantineMode`,
-`setPowerSaverMode`, `setChildLock`, `setSoundsConfig`, `setBedtime`,
-`startDeepClean`, `calibrateFilter`, `resetFilterTracking`, `resetSensor`.
+### Commands
 
-### Switch / level semantics
+Beyond the standard capability commands: `setAutomagicMode`, `setManualMode`,
+`setQuietMode`, `setSleepMode`, `setTurndownMode`, `setWhitenoiseMode`,
+`setHousekeeperMode`, `setQuarantineMode`, `setPowerSaverMode`, `setChildLock`,
+`setSoundsConfig`, `setBedtime`, `startDeepClean`, `calibrateFilter`,
+`resetFilterTracking`, `resetSensor`.
 
-* `off()` → manual mode with a null fan speed (Mila's way of stopping the fan).
-* `on()` → manual mode at the last non-zero level, or the *Default on level*
-  preference if there has never been one.
-* `setSpeed("auto")` → Automagic.
-* Reported RPM is converted back to a percentage using the *Minimum/Maximum fan
-  RPM* preferences (default 600/2000) and snapped to steps of 10, matching the
-  Mila app's own slider. Those defaults are the endpoints Mila's schema
-  documents for `fanSpeed` 0 and 100, and they make the set value and the
-  read-back value agree exactly at every step. If your unit idles nearer 500
-  RPM, lower *Minimum fan RPM* — at the cost of the low end of the scale
-  reading about one step high.
+`resetFilterTracking` restarts filter life from today, for a filter you changed
+without recording it in the Mila app. It only affects Hubitat and sends nothing
+to Mila.
 
----
+### Fan behaviour
 
-## Filter tracking
-
-Mila records when a filter was fitted and computes its own `daysLeft`, but the
-app raises no reminder to actually change it. This fills that gap.
-
-**Run hours.** Every poll, the interval since the previous poll is credited to
-`filterHours` if the fan was turning at the start of it. A transition is
-therefore attributed to the following interval — at most one poll period of
-error per on/off, unbiased in either direction, against a filter life measured
-in months. Gaps longer than two hours (hub restart, outage, polling paused) are
-discarded rather than counted, since there is no evidence about what the fan
-did during them.
-
-**Due date.** Taken from the install date plus the *Replace filter after*
-preference on each device, so purifiers in dirtier rooms can be set shorter.
-The default is 6 months, [Mila's own recommendation][mila-filters]; real life
-runs 6–9 months depending on air quality. Month arithmetic uses a calendar, so
-6 months is 181 days rather than a drifting 180.
-
-**When it says replace.** `filterStatus` flips to `replace` when *either* clock
-runs out: the configured interval, or Mila's own `daysLeft` dropping to 7 or
-under. They measure different things — ours is calendar time from installation,
-Mila's reacts to how dirty the air has actually been — so whichever expires
-first wins. Both are exposed separately so you can see which fired.
-
-**Resetting.** When Mila reports a new install date the counters reset on their
-own. `resetFilterTracking` restarts filter life from today for a filter changed
-without the Mila app recording it; it is local only and sends nothing to Mila.
-
-**Reminders.** The app's *Filter change reminders* section sends to any
-Notification device — once when the warning threshold is crossed (14 days ahead
-by default) and once when it falls due, checked daily at 9am. Fitting a new
-filter re-arms both. Leave the device list empty and nothing is sent; the
-attributes are still there for your own rules.
-
-This all works from `filter.installedAt`, which is in both field sets, so it
-keeps working if the app falls back to the reduced query. Only Mila's
-`daysLeft` cross-check needs the extended one.
-
-[mila-filters]: https://help.milacares.com/filters.html
+* **Off** stops the fan; **On** resumes your last speed, or the *Default on
+  level* preference if there isn't one.
+* `setSpeed("auto")` switches to Automagic.
+* Speed percentages snap to steps of 10, matching the Mila app's own slider.
+  Mila reports fan speed in RPM, which is converted back using the
+  *Minimum/Maximum fan RPM* preferences (default 600/2000 — the values Mila's
+  API documents). If your unit idles nearer 500 RPM you can lower the minimum,
+  at the cost of the low end of the scale reading about one step high.
 
 ---
 
-## Design notes
+## Troubleshooting
 
-* **One poll covers every device.** The app issues a single GraphQL query per
-  cycle regardless of how many purifiers you have, then pushes results into each
-  child. Shortening the interval does not multiply with device count.
-* **Token handling.** Access token is renewed 60 s before expiry, using the
-  refresh token when it is still good and falling back to a full password login
-  otherwise. A 401 mid-flight triggers one re-auth and retry.
-* **Rate limiting.** A 429 from Mila starts a 60 s backoff during which
-  scheduled polls are skipped. User-initiated commands still go through.
-* **Schema drift guard.** The poll asks for an extended field set including
-  `smartModes` and `filter.daysLeft`. Those exist in the published schema but
-  are not exercised by ha-mila, so if Mila's live schema rejects them the app
-  logs a warning, falls back permanently to a reduced known-good field set, and
-  keeps polling. Saving the app re-tries the extended set.
-* **Deletion safety.** Unticking a device removes it, but a device that Mila
-  did *not* return in the last scan is never auto-deleted — a transient API
-  failure should not destroy your device history.
-* All 21 GraphQL documents the app can build were validated against
-  `mila_schema.gql` from `milasdk 2026.1.3`.
+**Login fails with `invalid_grant`** — the email or password is wrong.
+
+**Login fails with `unauthorized_client`** — Mila has disabled direct password
+login for its app client. Nothing in this integration can work around that; it
+would require a browser-based sign-in flow that Hubitat cannot complete.
+
+**New attributes don't appear after an update** — Hubitat doesn't refresh a
+device when its driver code changes. Press **Refresh** on the device, or wait
+for the next poll.
+
+**Values look stale** — everything arrives on the poll interval. Changes made in
+the Mila app show up at the next poll; commands sent from Hubitat trigger a
+catch-up refresh a few seconds later.
+
+## Limitations
+
+* **Fan speed belongs to the room, not the purifier.** If two Mila units share a
+  room in the Mila app, changing the speed of one changes both. Put them in
+  separate rooms in the Mila app if you need independent control. Smart modes
+  are per unit and unaffected.
+* **Cloud polling only.** Mila offers no push channel, so there is always up to
+  one poll interval of delay.
+* **Outdoor air quality and pollen** are available from Mila's API but not
+  exposed here — they belong to a location rather than a purifier, so they would
+  need a separate device.
+* **Unofficial API**, which may break without warning.
 
 ---
 
-## Known limitations
+## How it works
 
-* **Rooms, not appliances, own the fan speed.** If two Mila units share a room
-  in the Mila app, changing the speed on one changes both. Split them into
-  separate rooms in the Mila app if you need independent control.
-* **Unofficial API.** Mila can change or break this without notice.
-* **Cloud polling only.** There is no push/websocket channel, so state changes
-  made in the Mila app appear at the next poll. Commands issued from Hubitat
-  schedule a catch-up refresh ~6 s later.
-* **Outdoor air quality and pollen** are available from the same API
-  (`Location.outdoorStation`, `Location.pollenStation`) but are not exposed —
-  they belong to a location, not a purifier, so they would need a second driver.
-* Filter run hours are sampled at the poll interval, not measured on the
-  device, so they are an estimate — accurate to about one poll period per
-  on/off transition, and blind to any period the hub was down.
+The app owns the Mila connection for the whole hub — credentials, tokens,
+discovery and polling — and the driver holds none of it. That split matters
+because a single API query returns every sensor for every appliance, so one poll
+serves all your purifiers no matter how many you have. Shortening the interval
+doesn't multiply with device count.
+
+A few details worth knowing if you're reading the code:
+
+* **Authentication** is a Keycloak password grant against Mila's own login
+  server. Tokens are renewed shortly before expiry, falling back to a full login
+  if the refresh token has lapsed, and a mid-flight rejection triggers one
+  re-authentication and retry.
+* **Rate limiting** is respected: if Mila returns HTTP 429 the app backs off and
+  skips scheduled polls for a minute. Commands you trigger still go through.
+* **Schema changes** are survivable. The poll requests a richer field set than
+  strictly required; if Mila's API ever rejects part of it, the app logs a
+  warning, falls back to a reduced known-good query and keeps working.
+* **Devices are never auto-deleted** because of an API hiccup. Unticking a
+  device in the app removes it, but a device simply missing from a scan is left
+  alone along with its history.
+
+## Contributing
+
+Issues and pull requests are welcome. If you fork this and change the
+`vision9074` namespace, change it in *both* files — `definition(namespace:)` in
+each, plus `DRIVER_NAMESPACE` in the app — or the app won't be able to create
+devices.
 
 ## Credits
 
-Reverse engineering and reference implementations by Harshit Sanghvi and
-@simbaja: [ha-mila](https://github.com/sanghviharshit/ha-mila),
-[milasdk](https://pypi.org/project/milasdk/). MIT licensed, as is this code.
+Built on the reverse engineering and reference implementations of Harshit
+Sanghvi and @simbaja: [ha-mila](https://github.com/sanghviharshit/ha-mila) and
+[milasdk](https://pypi.org/project/milasdk/).
+
+## License
+
+[MIT](LICENSE).
