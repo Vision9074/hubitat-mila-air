@@ -39,15 +39,11 @@ dashboards, and any other app.
 ### Option A — Hubitat Package Manager (recommended)
 
 HPM installs both files in the right order and handles updates afterwards.
-In the HPM app, either:
 
-* **Install → From a URL**, and paste:
-  `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/packageManifest.json`
-* or **Package Manager Settings → Add a Custom Repository**, paste:
-  `https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/repository.json`
-  then **Install → From a Repository → Integrations → Mila Air Integration**.
-  Adding the repository is the better option if you want this package to appear
-  in HPM's browse and search lists.
+1. Open **Hubitat Package Manager**.
+2. Choose **Install → Search by Keywords**.
+3. Search for `mila`, pick **Mila Air Integration**, and press **Next**.
+4. Confirm at the prompt to complete the installation.
 
 ### Option B — manual import
 
@@ -63,12 +59,14 @@ devices.
 
 ### Set it up
 
-3. **Apps → Add user app → Mila Air Integration**.
-4. Open **Mila account**, enter your Mila email and password, and press
+Once the app and driver are installed, by either method:
+
+1. **Apps → Add user app → Mila Air Integration**.
+2. Open **Mila account**, enter your Mila email and password, and press
    **Connect to Mila**. You should see "Connected successfully".
-5. Open **Add / remove Mila devices**, tick the units you want, and press
+3. Open **Add / remove Mila devices**, tick the units you want, and press
    **Create / Remove Devices**.
-6. Back on the main page, set your poll interval and press **Done**.
+4. Back on the main page, set your poll interval and press **Done**.
 
 ---
 
