@@ -125,7 +125,10 @@ CarbonDioxideMeasurement, FilterStatus, SignalStrength.
 | `activeModes` | JSON | every mode currently applied |
 | `connectionStatus` | | `online` / `offline` |
 | `filterStatus` | | `normal` / `replace` |
+| `filterDataAvailable` | | whether Mila returns filter data for this unit |
 | `filterKind`, `filterInstalled` | | filter type and install date |
+| `filterCalibrated` | | last calibration date, or `never` |
+| `filterInstalledEpoch`, `filterCalibratedEpoch` | s | the same dates as raw unix timestamps, for rules |
 | `filterDaysLeft` | days | Mila's own estimate |
 | `filterHours` | h | fan run hours since the filter was fitted |
 | `filterDaysInService`, `filterDaysRemaining` | days | |
@@ -146,6 +149,17 @@ Beyond the standard capability commands: `setAutomagicMode`, `setManualMode`,
 `resetFilterTracking` restarts filter life from today, for a filter you changed
 without recording it in the Mila app. It only affects Hubitat and sends nothing
 to Mila.
+
+`calibrateFilter` asks the unit to run its calibration sequence — the same one
+it performs automatically when plugged in, taking roughly 70 seconds. Mila uses
+it to re-establish baseline sensor readings and correct for drift. It updates
+`filterCalibrated`. This is a request to the purifier, not a Hubitat-side
+setting.
+
+Not every Mila account returns filter data. If `filterDataAvailable` reads
+`false`, Mila is not reporting a filter object for that unit, so `filterKind`,
+`filterInstalled`, `filterDaysLeft` and the derived due date stay empty.
+`filterHours` still counts, because it is measured from fan speed alone.
 
 ### Fan behaviour
 

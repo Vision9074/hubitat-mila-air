@@ -65,9 +65,16 @@ metadata {
         // --- Appliance details
         attribute "roomName", "string"
         attribute "firmware", "string"
+        // Raw filter data, exactly as Mila's API returns it. The official Mila
+        // app surfaces none of this, and Mila returns no filter object at all
+        // for some appliances -- filterDataAvailable says which case you are in.
+        attribute "filterDataAvailable", "enum", ["true", "false"]
         attribute "filterKind", "string"
         attribute "filterDaysLeft", "number"          // Mila's own estimate
         attribute "filterInstalled", "string"
+        attribute "filterCalibrated", "string"        // "never" until first calibration
+        attribute "filterInstalledEpoch", "number"    // unix seconds, as returned
+        attribute "filterCalibratedEpoch", "number"
         // Derived filter usage. Mila exposes no replacement reminder, so these
         // are accumulated here from the polled data.
         attribute "filterHours", "number"             // hours the fan has actually run
@@ -375,9 +382,16 @@ void parseApplianceData(Map appliance) {
     // modeName is passed down rather than read back with currentValue(): an
     // attribute read immediately after its own sendEvent can still be stale.
     parseSensors(appliance.sensors as List, online, modeName)
-    // Runs last: filter tracking integrates fan runtime, so it needs the fan
-    // speed from this same sample.
-    parseFilter(appliance.filter as Map, sensorValue(appliance.sensors as List, "FanSpeed"), online)
+
+    // Order matters. parseFilter zeroes the run-hour counters when Mila reports
+    // a new filter, so it has to run before the elapsed interval is added and
+    // published -- otherwise a filter change publishes the old total for one
+    // poll. Accumulation itself sits outside parseFilter because it depends
+    // only on fan speed, and Mila does not return a filter object for every
+    // appliance: run hours must keep counting when it doesn't.
+    parseFilter(appliance.filter as Map)
+    accumulateRuntime(sensorValue(appliance.sensors as List, "FanSpeed"), online)
+    updateAttr("filterHours", filterRunHours(), "h")
 
     updateAttr("targetAqi", targetAqiSetting())
     sendEvent(name: "lastUpdate", value: new Date().format("yyyy-MM-dd HH:mm:ss", location.timeZone))
@@ -399,14 +413,30 @@ private void parseRoom(Map room) {
  * run hours are integrated across polls, and the due date comes from the
  * install date plus the configured interval.
  */
-private void parseFilter(Map filter, BigDecimal fanRpm, boolean online) {
-    if (!filter) return
+private void parseFilter(Map filter) {
+    // Mila returns no filter object for some appliances. Everything that does
+    // not depend on it (run hours) is handled by the caller.
+    if (!filter) {
+        updateAttr("filterDataAvailable", "false")
+        return
+    }
+    updateAttr("filterDataAvailable", "true")
+
     if (filter.kind) updateAttr("filterKind", splitCamelCase(filter.kind.toString()))
 
     Long installedMs = epochToMillis(filter.installedAt)
     if (installedMs != null) {
         updateAttr("filterInstalled", formatDate(installedMs))
+        updateAttr("filterInstalledEpoch", epochSeconds(filter.installedAt))
         anchorFilterTracking(installedMs)
+    }
+
+    // Nullable: a filter that has never been calibrated returns null, which is
+    // meaningfully different from "calibrated at the epoch".
+    Long calibratedMs = epochToMillis(filter.calibratedAt)
+    updateAttr("filterCalibrated", calibratedMs == null ? "never" : formatDate(calibratedMs))
+    if (calibratedMs != null) {
+        updateAttr("filterCalibratedEpoch", epochSeconds(filter.calibratedAt))
     }
 
     // Mila's own estimate. Absent from the reduced field set, so everything
@@ -416,9 +446,6 @@ private void parseFilter(Map filter, BigDecimal fanRpm, boolean online) {
         milaDaysLeft = toNumber(filter.daysLeft) as Integer
         updateAttr("filterDaysLeft", milaDaysLeft, "days")
     }
-
-    accumulateRuntime(fanRpm, online)
-    updateAttr("filterHours", filterRunHours(), "h")
 
     Long anchorMs = state.filterAnchorMs as Long
     if (anchorMs == null) return
@@ -639,8 +666,13 @@ private String boolToOnOff(value) {
 }
 
 private Long epochToMillis(value) {
-    Long secs = toBigDecimal(value)?.longValue()
+    Long secs = epochSeconds(value)
     return secs == null ? null : (secs * 1000L)
+}
+
+/** Long, not Integer: unix seconds overflow a signed 32-bit int in 2038. */
+private Long epochSeconds(value) {
+    return toBigDecimal(value)?.longValue()
 }
 
 private String formatDate(Long ms) {
