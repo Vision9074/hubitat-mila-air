@@ -414,39 +414,43 @@ private void parseRoom(Map room) {
  * install date plus the configured interval.
  */
 private void parseFilter(Map filter) {
-    // Mila returns no filter object for some appliances. Everything that does
-    // not depend on it (run hours) is handled by the caller.
-    if (!filter) {
-        updateAttr("filterDataAvailable", "false")
-        return
-    }
-    updateAttr("filterDataAvailable", "true")
+    // Mila returns no filter object for some appliances -- the Air Mini among
+    // them. Only the API-sourced values below need it; everything derived is
+    // computed from the tracking anchor and the configured interval, so it has
+    // to stay outside this guard or those units get no due date at all.
+    boolean hasFilter = filter ? true : false
+    updateAttr("filterDataAvailable", hasFilter ? "true" : "false")
 
-    if (filter.kind) updateAttr("filterKind", splitCamelCase(filter.kind.toString()))
-
-    Long installedMs = epochToMillis(filter.installedAt)
-    if (installedMs != null) {
-        updateAttr("filterInstalled", formatDate(installedMs))
-        updateAttr("filterInstalledEpoch", epochSeconds(filter.installedAt))
-        anchorFilterTracking(installedMs)
-    }
-
-    // Nullable: a filter that has never been calibrated returns null, which is
-    // meaningfully different from "calibrated at the epoch".
-    Long calibratedMs = epochToMillis(filter.calibratedAt)
-    updateAttr("filterCalibrated", calibratedMs == null ? "never" : formatDate(calibratedMs))
-    if (calibratedMs != null) {
-        updateAttr("filterCalibratedEpoch", epochSeconds(filter.calibratedAt))
-    }
-
-    // Mila's own estimate. Absent from the reduced field set, so everything
-    // below has to work without it.
+    // Mila's own estimate, when it is offered at all.
     Integer milaDaysLeft = null
-    if (filter.daysLeft != null) {
-        milaDaysLeft = toNumber(filter.daysLeft) as Integer
-        updateAttr("filterDaysLeft", milaDaysLeft, "days")
+
+    if (hasFilter) {
+        if (filter.kind) updateAttr("filterKind", splitCamelCase(filter.kind.toString()))
+
+        Long installedMs = epochToMillis(filter.installedAt)
+        if (installedMs != null) {
+            updateAttr("filterInstalled", formatDate(installedMs))
+            updateAttr("filterInstalledEpoch", epochSeconds(filter.installedAt))
+            anchorFilterTracking(installedMs)
+        }
+
+        // Nullable: a filter that has never been calibrated returns null, which
+        // is meaningfully different from "calibrated at the epoch".
+        Long calibratedMs = epochToMillis(filter.calibratedAt)
+        updateAttr("filterCalibrated", calibratedMs == null ? "never" : formatDate(calibratedMs))
+        if (calibratedMs != null) {
+            updateAttr("filterCalibratedEpoch", epochSeconds(filter.calibratedAt))
+        }
+
+        if (filter.daysLeft != null) {
+            milaDaysLeft = toNumber(filter.daysLeft) as Integer
+            updateAttr("filterDaysLeft", milaDaysLeft, "days")
+        }
     }
 
+    // Without filter data the anchor can only come from resetFilterTracking,
+    // which is what makes that command the way to start tracking on a unit
+    // Mila reports nothing for.
     Long anchorMs = state.filterAnchorMs as Long
     if (anchorMs == null) return
 

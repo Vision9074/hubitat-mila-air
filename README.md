@@ -156,10 +156,16 @@ it to re-establish baseline sensor readings and correct for drift. It updates
 `filterCalibrated`. This is a request to the purifier, not a Hubitat-side
 setting.
 
-Not every Mila account returns filter data. If `filterDataAvailable` reads
-`false`, Mila is not reporting a filter object for that unit, so `filterKind`,
-`filterInstalled`, `filterDaysLeft` and the derived due date stay empty.
-`filterHours` still counts, because it is measured from fan speed alone.
+Not every Mila unit reports filter data — the **Air Mini** appears not to. When
+`filterDataAvailable` reads `false`, the values Mila would have supplied
+(`filterKind`, `filterInstalled`, `filterCalibrated`, `filterDaysLeft`) stay
+empty, because they simply aren't sent.
+
+Everything the driver works out for itself still functions, but it needs a start
+date, which normally comes from Mila's install date. Press **Reset Filter
+Tracking** when you fit a filter and run hours, the due date, days remaining and
+reminders all work from that point — which makes this integration the only
+filter reminder available for those units.
 
 ### Fan behaviour
 

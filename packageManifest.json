@@ -1,7 +1,7 @@
 {
   "packageName": "Mila Air Integration",
   "author": "vision9074",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minimumHEVersion": "2.3.0",
   "licenseFile": "https://raw.githubusercontent.com/vision9074/hubitat-mila-air/main/LICENSE",
   "documentationLink": "https://github.com/vision9074/hubitat-mila-air",
@@ -26,5 +26,5 @@
       "required": true
     }
   ],
-  "releaseNotes": "1.2.0 - Fixes filter run hours never counting on accounts where Mila does not report filter details. Adds the filter calibration date, the install and calibration dates as raw timestamps for use in rules, and an indicator showing whether Mila provides filter data for each unit.\n\n1.1.0 - Adds filter tracking: run hours, days remaining and a replacement due date, with a replacement interval you choose per device (default 6 months). Optional reminders can be sent to any notification device. Fixes fan speed reading about one step high at low speeds.\n\n1.0.0 - Initial release. App handles Mila account login, device discovery and polling. Driver provides air quality, temperature, humidity, CO2, CO, VOC and particulate sensors, plus fan control and Mila's smart modes."
+  "releaseNotes": "1.2.1 - Fixes the filter due date, days remaining and change reminders not working on units where Mila does not report filter details, such as the Air Mini. On those units, press Reset Filter Tracking when you fit a filter to start tracking from that date.\n\n1.2.0 - Fixes filter run hours never counting on accounts where Mila does not report filter details. Adds the filter calibration date, the install and calibration dates as raw timestamps for use in rules, and an indicator showing whether Mila provides filter data for each unit.\n\n1.1.0 - Adds filter tracking: run hours, days remaining and a replacement due date, with a replacement interval you choose per device (default 6 months). Optional reminders can be sent to any notification device. Fixes fan speed reading about one step high at low speeds.\n\n1.0.0 - Initial release. App handles Mila account login, device discovery and polling. Driver provides air quality, temperature, humidity, CO2, CO, VOC and particulate sensors, plus fan control and Mila's smart modes."
 }
